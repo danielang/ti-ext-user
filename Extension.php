@@ -9,6 +9,19 @@ class Extension extends \System\Classes\BaseExtension
         $this->registerEventGlobalParams();
     }
 
+    public function registerAutomationRules()
+    {
+        return [
+            'events' => [
+                'igniter.user.register' => \Igniter\User\AutomationRules\Events\CustomerRegistered::class,
+            ],
+            'actions' => [],
+            'conditions' => [
+                \Igniter\User\AutomationRules\Conditions\CustomerAttribute::class,
+            ],
+        ];
+    }
+
     public function registerEventRules()
     {
         return [
@@ -19,7 +32,7 @@ class Extension extends \System\Classes\BaseExtension
                 \Igniter\User\EventRules\Actions\SendMailTemplate::class,
             ],
             'conditions' => [
-                \Igniter\User\EventRules\Conditions\CustomerAttribute::class
+                \Igniter\User\EventRules\Conditions\CustomerAttribute::class,
             ],
         ];
     }
@@ -47,11 +60,6 @@ class Extension extends \System\Classes\BaseExtension
                 'name' => 'lang:igniter.user::default.addressbook.component_title',
                 'description' => 'lang:igniter.user::default.addressbook.component_desc',
             ],
-            'Igniter\User\Components\Reviews' => [
-                'code' => 'accountReviews',
-                'name' => 'lang:igniter.user::default.reviews.component_title',
-                'description' => 'lang:igniter.user::default.reviews.component_desc',
-            ],
             'Igniter\User\Components\Inbox' => [
                 'code' => 'accountInbox',
                 'name' => 'lang:igniter.user::default.inbox.component_title',
@@ -71,15 +79,29 @@ class Extension extends \System\Classes\BaseExtension
         ];
     }
 
+    public function registerActivityTypes()
+    {
+        return [
+            ActivityTypes\CustomerRegistered::class,
+        ];
+    }
+
     protected function registerEventGlobalParams()
     {
-        if (!class_exists(\Igniter\EventRules\Classes\EventManager::class))
-            return;
+        if (class_exists(\Igniter\Automation\Classes\EventManager::class)) {
+            \Igniter\Automation\Classes\EventManager::instance()->registerCallback(function ($manager) {
+                $manager->registerGlobalParams([
+                    'customer' => Auth::customer(),
+                ]);
+            });
+        }
 
-        \Igniter\EventRules\Classes\EventManager::instance()->registerCallback(function ($manager) {
-            $manager->registerGlobalParams([
-                'customer' => Auth::customer()
-            ]);
-        });
+        if (class_exists(\Igniter\EventRules\Classes\EventManager::class)) {
+            \Igniter\EventRules\Classes\EventManager::instance()->registerCallback(function ($manager) {
+                $manager->registerGlobalParams([
+                    'customer' => Auth::customer(),
+                ]);
+            });
+        }
     }
 }

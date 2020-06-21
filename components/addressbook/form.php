@@ -75,7 +75,7 @@
 
     <div class="form-group">
         <label><?= lang('igniter.user::default.account.label_country'); ?></label>
-        <select name="address[country]" class="form-control">
+        <select name="address[country_id]" class="form-control">
             <?php foreach (countries() as $key => $value) { ?>
                 <option
                     value="<?= $key; ?>"
@@ -86,14 +86,14 @@
         <?= form_error('address.country', '<span class="text-danger">', '</span>'); ?>
     </div>
 
-    <div class="buttons">
-        <a
-            class="btn btn-default"
-            href="<?= site_url('account/address'); ?>"
-        ><?= lang('igniter.user::default.account.button_back'); ?></a>
+    <div class="d-flex justify-content-between">
         <button
             type="submit"
-            class="btn btn-primary btn-lg"
+            class="btn btn-primary"
         ><?= lang('igniter.user::default.account.button_update'); ?></button>
+        <a
+            class="btn btn-light"
+            href="<?= site_url('account/address'); ?>"
+        ><?= lang('igniter.user::default.account.button_back'); ?></a>
     </div>
 </form>

@@ -4,14 +4,13 @@ namespace Igniter\User\Components;
 
 use Auth;
 use Event;
-use Main\Traits\HasPageOptions;
 use Redirect;
 use Request;
 use System\Classes\BaseComponent;
 
 class Session extends BaseComponent
 {
-    use HasPageOptions;
+    use \Main\Traits\UsesPage;
 
     public function initialize()
     {
@@ -28,11 +27,17 @@ class Session extends BaseComponent
                 'type' => 'string',
                 'default' => 'all',
             ],
+            'loginPage' => [
+                'label' => 'The account login page',
+                'type' => 'select',
+                'default' => 'account/login',
+                'options' => [static::class, 'getThemePageOptions'],
+            ],
             'redirectPage' => [
                 'label' => 'Page name to redirect to when access is restricted',
                 'type' => 'select',
                 'default' => 'home',
-                'options' => [static::class, 'getPageOptions'],
+                'options' => [static::class, 'getThemePageOptions'],
             ],
         ];
     }
@@ -53,6 +58,13 @@ class Session extends BaseComponent
         }
 
         return Auth::getUser();
+    }
+
+    public function loginUrl()
+    {
+        $currentUrl = str_replace(Request::root(), '', Request::fullUrl());
+
+        return $this->controller->pageUrl($this->property('loginPage')).'?redirect='.urlencode($currentUrl);
     }
 
     public function onLogout()
@@ -77,8 +89,6 @@ class Session extends BaseComponent
         $allowedGroup = $this->property('security', 'all');
         $isAuthenticated = Auth::check();
         if ($allowedGroup == 'customer' AND !$isAuthenticated) {
-            flash()->danger(lang('igniter.user::default.login.alert_expired_login'));
-
             return FALSE;
         }
 

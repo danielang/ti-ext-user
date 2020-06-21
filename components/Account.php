@@ -8,15 +8,16 @@ use Auth;
 use Cart;
 use Event;
 use Exception;
+use Igniter\Flame\Exception\ValidationException;
+use Igniter\User\ActivityTypes\CustomerRegistered;
 use Mail;
-use Main\Traits\HasPageOptions;
 use Redirect;
 use Request;
 
 class Account extends \System\Classes\BaseComponent
 {
     use ValidatesForm;
-    use HasPageOptions;
+    use \Main\Traits\UsesPage;
 
     public function defineProperties()
     {
@@ -25,67 +26,61 @@ class Account extends \System\Classes\BaseComponent
                 'label' => 'The customer dashboard page',
                 'type' => 'select',
                 'default' => 'account/account',
-                'options' => [static::class, 'getPageOptions'],
-            ],
-            'detailsPage' => [
-                'label' => 'The customer details page',
-                'type' => 'select',
-                'default' => 'account/details',
-                'options' => [static::class, 'getPageOptions'],
+                'options' => [static::class, 'getThemePageOptions'],
             ],
             'addressPage' => [
                 'label' => 'The customer address page',
                 'type' => 'select',
                 'default' => 'account/address',
-                'options' => [static::class, 'getPageOptions'],
+                'options' => [static::class, 'getThemePageOptions'],
             ],
             'ordersPage' => [
                 'label' => 'The customer orders page',
                 'type' => 'select',
                 'default' => 'account/orders',
-                'options' => [static::class, 'getPageOptions'],
+                'options' => [static::class, 'getThemePageOptions'],
             ],
             'reservationsPage' => [
                 'label' => 'The customer reservations page',
                 'type' => 'select',
                 'default' => 'account/reservations',
-                'options' => [static::class, 'getPageOptions'],
+                'options' => [static::class, 'getThemePageOptions'],
             ],
             'reviewsPage' => [
                 'label' => 'The customer reviews page',
                 'type' => 'select',
                 'default' => 'account/reviews',
-                'options' => [static::class, 'getPageOptions'],
+                'options' => [static::class, 'getThemePageOptions'],
             ],
             'inboxPage' => [
                 'label' => 'The customer inbox page',
                 'type' => 'select',
                 'default' => 'account/inbox',
-                'options' => [static::class, 'getPageOptions'],
+                'options' => [static::class, 'getThemePageOptions'],
             ],
             'loginPage' => [
                 'label' => 'The account login page',
                 'type' => 'select',
                 'default' => 'account/login',
-                'options' => [static::class, 'getPageOptions'],
+                'options' => [static::class, 'getThemePageOptions'],
             ],
             'activationPage' => [
                 'label' => 'The account registration activation page',
                 'type' => 'select',
                 'default' => 'account/register',
-                'options' => [static::class, 'getPageOptions'],
+                'options' => [static::class, 'getThemePageOptions'],
             ],
             'agreeRegistrationTermsPage' => [
                 'label' => 'Registration Terms',
                 'type' => 'select',
-                'options' => [static::class, 'getPagesOptions'],
+                'options' => [static::class, 'getStaticPageOptions'],
                 'comment' => 'Require customers to agree to terms before an account is registered',
             ],
             'redirectPage' => [
                 'label' => 'Page to redirect to after successful login or registration',
                 'type' => 'select',
                 'default' => 'account/account',
-                'options' => [static::class, 'getPageOptions'],
+                'options' => [static::class, 'getThemePageOptions'],
             ],
         ];
     }
@@ -123,14 +118,14 @@ class Account extends \System\Classes\BaseComponent
         return Cart::total();
     }
 
+    public function getRegistrationTermsPageSlug()
+    {
+        return $this->getStaticPagePermalink($this->property('agreeRegistrationTermsPage'));
+    }
+
     public function getRegistrationTermsUrl()
     {
-        $termsPageId = $this->property('agreeRegistrationTermsPage');
-        $termsPage = $this->findPage($termsPageId);
-
-        return $this->controller->pageUrl('pages/pages', [
-            'slug' => $termsPage ? $termsPage->permalink_slug : null,
-        ]);
+        return url($this->getRegistrationTermsPageSlug());
     }
 
     public function customer()
@@ -152,23 +147,11 @@ class Account extends \System\Classes\BaseComponent
         return $this->customer()->reservations()->with('status')->take(10)->get();
     }
 
-    public function getCustomerMessages()
-    {
-        return $this->customer()->messages()->take(10)->get();
-    }
-
-    public function loginUrl()
-    {
-        $currentUrl = str_replace(Request::root(), '', Request::fullUrl());
-
-        return $this->controller->pageUrl($this->property('loginPage')).'?redirect='.urlencode($currentUrl);
-    }
-
     public function onLogin()
     {
         try {
             $namedRules = [
-                ['email', 'lang:igniter.user::default.settings.label_email', 'required|email'],
+                ['email', 'lang:igniter.user::default.settings.label_email', 'required|email:filter'],
                 ['password', 'lang:igniter.user::default.login.label_password', 'required|min:6|max:32'],
                 ['remember', 'lang:igniter.user::default.login.label_remember', 'integer'],
             ];
@@ -186,7 +169,7 @@ class Account extends \System\Classes\BaseComponent
             if (!Auth::authenticate($credentials, $remember, TRUE))
                 throw new ApplicationException(lang('igniter.user::default.login.alert_invalid_login'));
 
-            Event::fire('igniter.user.login', [$this]);
+            Event::fire('igniter.user.login', [$this], TRUE);
 
             if ($redirect = input('redirect'))
                 return Redirect::to($this->controller->pageUrl($redirect));
@@ -194,10 +177,8 @@ class Account extends \System\Classes\BaseComponent
             if ($redirectUrl = $this->controller->pageUrl($this->property('redirectPage')))
                 return Redirect::intended($redirectUrl);
         }
-        catch (Exception $ex) {
-            flash()->warning($ex->getMessage());
-
-            return Redirect::back()->withInput();
+        catch (ValidationException $ex) {
+            throw new ApplicationException(implode(PHP_EOL, $ex->getErrors()->all()));
         }
     }
 
@@ -210,9 +191,9 @@ class Account extends \System\Classes\BaseComponent
             $data = post();
 
             $rules = [
-                ['first_name', 'lang:igniter.user::default.settings.label_first_name', 'required|min:2|max:32'],
-                ['last_name', 'lang:igniter.user::default.settings.label_last_name', 'required|min:2|max:32'],
-                ['email', 'lang:igniter.user::default.settings.label_email', 'required|email|unique:customers,email'],
+                ['first_name', 'lang:igniter.user::default.settings.label_first_name', 'required|min:1|max:48'],
+                ['last_name', 'lang:igniter.user::default.settings.label_last_name', 'required|min:1|max:48'],
+                ['email', 'lang:igniter.user::default.settings.label_email', 'required|email:filter|unique:customers,email'],
                 ['password', 'lang:igniter.user::default.login.label_password', 'required|min:6|max:32|same:password_confirm'],
                 ['password_confirm', 'lang:igniter.user::default.login.label_password_confirm', 'required'],
                 ['telephone', 'lang:igniter.user::default.settings.label_telephone', 'required'],
@@ -224,7 +205,9 @@ class Account extends \System\Classes\BaseComponent
 
             $this->validate($data, $rules);
 
-            Event::fire('igniter.user.beforeRegister', [&$data]);
+            $response = Event::fire('igniter.user.beforeRegister', [&$data]);
+            if (!is_null($response))
+                return $response;
 
             $data['customer_group_id'] = $defaultCustomerGroupId = setting('customer_group_id');
             $customerGroup = Customer_groups_model::find($defaultCustomerGroupId);
@@ -237,9 +220,12 @@ class Account extends \System\Classes\BaseComponent
 
             Event::fire('igniter.user.register', [$customer, $data]);
 
+            $redirectUrl = $this->controller->pageUrl($this->property('redirectPage'));
+
             if ($requireActivation) {
                 $this->sendActivationEmail($customer);
                 flash()->success(lang('igniter.user::default.login.alert_account_activation'));
+                $redirectUrl = $this->controller->pageUrl($this->property('loginPage'));
             }
 
             if (!$requireActivation) {
@@ -248,21 +234,13 @@ class Account extends \System\Classes\BaseComponent
                 flash()->success(lang('igniter.user::default.login.alert_account_created'));
             }
 
-            activity()
-                ->useEvent($customer->getEventNameToUse('created'))
-                ->performedOn($customer)
-                ->causedBy($customer)
-                ->log();
-
-            $redirectUrl = $this->controller->pageUrl($this->property('redirectPage'));
+            CustomerRegistered::log($customer);
 
             if ($redirectUrl = get('redirect', $redirectUrl))
                 return Redirect::intended($redirectUrl);
         }
-        catch (Exception $ex) {
-            flash()->warning($ex->getMessage());
-
-            return Redirect::back()->withInput();
+        catch (ValidationException $ex) {
+            throw new ApplicationException(implode(PHP_EOL, $ex->getErrors()->all()));
         }
     }
 
@@ -275,8 +253,8 @@ class Account extends \System\Classes\BaseComponent
             $data = post();
 
             $rules = [
-                ['first_name', 'lang:igniter.user::default.label_first_name', 'required|min:2|max:32'],
-                ['last_name', 'lang:igniter.user::default.label_last_name', 'required|min:2|max:32'],
+                ['first_name', 'lang:igniter.user::default.label_first_name', 'required|min:1|max:48'],
+                ['last_name', 'lang:igniter.user::default.label_last_name', 'required|min:1|max:48'],
                 ['old_password', 'lang:igniter.user::default.label_email', 'sometimes'],
                 ['new_password', 'lang:igniter.user::default.label_password', 'required_with:old_password|min:6|max:32|same:confirm_new_password'],
                 ['confirm_new_password', 'lang:igniter.user::default.label_password_confirm', 'required_with:old_password'],
@@ -335,6 +313,10 @@ class Account extends \System\Classes\BaseComponent
                 throw new ApplicationException(lang('igniter.user::default.reset.alert_activation_failed'));
 
             Auth::login($customer);
+
+            $redirectUrl = $this->controller->pageUrl($this->property('accountPage'));
+
+            return Redirect::to($redirectUrl);
         }
         catch (Exception $ex) {
             if (Request::ajax()) throw $ex;
@@ -363,13 +345,13 @@ class Account extends \System\Classes\BaseComponent
         is_array($settingRegistrationEmail) OR $settingRegistrationEmail = [];
 
         if (in_array('customer', $settingRegistrationEmail)) {
-            Mail::send('igniter.user::mail.registration', $data, function ($message) use ($customer) {
+            Mail::queue('igniter.user::mail.registration', $data, function ($message) use ($customer) {
                 $message->to($customer->email, $customer->name);
             });
         }
 
         if (in_array('admin', $settingRegistrationEmail)) {
-            Mail::send('igniter.user::mail.registration_alert', $data, function ($message) {
+            Mail::queue('igniter.user::mail.registration_alert', $data, function ($message) {
                 $message->to(setting('site_email'), setting('site_name'));
             });
         }
@@ -397,7 +379,7 @@ class Account extends \System\Classes\BaseComponent
             'account_activation_link' => $link,
         ];
 
-        Mail::send('igniter.user::mail.activation', $data, function ($message) use ($customer) {
+        Mail::queue('igniter.user::mail.activation', $data, function ($message) use ($customer) {
             $message->to($customer->email, $customer->name);
         });
     }
